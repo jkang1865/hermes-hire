@@ -23,16 +23,13 @@ function getRealHome() {
   const candidate = path.join(envHome, ".hermes");
   if (fs.existsSync(candidate)) return envHome; // normal case
 
-  // Walk up until we find .hermes / home directory boundary
+  // Walk up until we find a path where parent/.hermes/profiles exists
   let current = envHome;
   for (let i = 0; i < 10; i++) {
     const parent = path.dirname(current);
     if (parent === current) break;
-    if (fs.existsSync(path.join(parent, ".hermes"))) return parent;
-    // Also detect the nested profile-home boundary
-    if (path.basename(current) === "home" && fs.existsSync(path.join(parent, "config.yaml"))) {
-      return parent;
-    }
+    const profilesDir = path.join(parent, ".hermes", "profiles");
+    if (fs.existsSync(profilesDir)) return parent;
     current = parent;
   }
   return envHome;
