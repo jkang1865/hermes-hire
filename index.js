@@ -281,7 +281,9 @@ function updateTerminalCwd(profileName, companyPrefix, role) {
   if (companyPrefix === "shelfscout" && role === "cto") {
     config.terminal.cwd = `~/${companyPrefix}`;
   } else {
-    config.terminal.cwd = "~";
+    // Use absolute home path — "~" resolves to nested profile workspace
+    // in multi-profile environments, breaking terminal tool access.
+    config.terminal.cwd = os.homedir();
   }
 
   fs.writeFileSync(configPath, yaml.dump(config, { lineWidth: -1 }), "utf-8");
