@@ -316,6 +316,33 @@ function appendToEnv(profileName, key, value) {
   console.log(`✅ Added ${key} to .env`);
 }
 
+// ── Resolve real Telegram bot username via getMe API ──────────────────
+function fetchTelegramBotUsername(token, fallback) {
+  const constructed = fallback || "unknown";
+  try {
+    const raw = execSync(
+      `curl -s "https://api.telegram.org/bot${token}/getMe"`,
+      { encoding: "utf-8", timeout: 15000 }
+    ).trim();
+    const result = JSON.parse(raw);
+    if (result.ok && result.result && result.result.username) {
+      const realUsername = result.result.username;
+      console.log(`✅ Telegram bot username verified: @${realUsername}`);
+      return realUsername;
+    }
+    // API returned non-ok or missing username
+    console.warn(
+      `⚠️  Telegram getMe did not return a username. Using constructed name: @${constructed}`
+    );
+    return constructed;
+  } catch (err) {
+    console.warn(
+      `⚠️  Could not verify Telegram username via getMe API (${err.message}). Using constructed name: @${constructed}`
+    );
+    return constructed;
+  }
+}
+
 function runGatewayCommands(profileName) {
   console.log(`\n▶ Running gateway install for ${profileName}...`);
   try {
@@ -393,7 +420,7 @@ function printSummary(profileName, donor, toolsets, telegramConfigured, papercli
    Toolsets:     ${toolsets}
 ${telegramConfigured ? `   Gateway:      hermes-gateway-${profileName} (systemd)` : ""}
    Paperclip:    ${paperclipOk ? "registered (company ID " + PAPERCLIP_COMPANY_ID + ")" : "⚠️  registration failed — agent still usable via Telegram"}
-${telegramConfigured ? `   Telegram:     @${config.telegramPrefix || profileName}_bot` : ""}
+${telegramConfigured ? `   Telegram:     @${config.telegramUsername || "unknown"}` : ""}
 `);
 }
 
@@ -481,8 +508,14 @@ async function main() {
   updateTerminalCwd(profileName, config.companyPrefix, config.role);
   updatePlatformToolsets(profileName, toolsets);
 
+  let telegramUsername = null;
+
   if (config.telegramToken) {
     appendToEnv(profileName, "TELEGRAM_BOT_TOKEN", config.telegramToken);
+    // Resolve real Telegram bot username via getMe API
+    const constructedFallback = `${config.companyPrefix}_${config.role}_bot`;
+    telegramUsername = fetchTelegramBotUsername(config.telegramToken, constructedFallback);
+    appendToEnv(profileName, "TELEGRAM_BOT_USERNAME", telegramUsername);
     runGatewayCommands(profileName);
   }
 
@@ -496,6 +529,15 @@ async function main() {
   );
 
   // Step 5: Summary
+  if (!telegramUsername) {
+    const constructedFallback = `${config.companyPrefix}_${config.role}_bot`;
+    if (config.telegramToken) {
+      telegramUsername = fetchTelegramBotUsername(config.telegramToken, constructedFallback);
+    } else {
+      telegramUsername = constructedFallback;
+    }
+  }
+
   printSummary(
     profileName,
     config.donor,
@@ -503,7 +545,7 @@ async function main() {
     !!config.telegramToken,
     paperclipOk,
     donorInfo.model,
-    { telegramPrefix: `${config.companyPrefix}_${config.role}` }
+    { telegramUsername: telegramUsername || `${config.companyPrefix}_${config.role}_bot` }
   );
 }
 

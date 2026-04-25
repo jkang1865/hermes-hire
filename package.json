@@ -1,6 +1,6 @@
 {
   "name": "hermes-hire",
-  "version": "1.0.0",
+  "version": "0.1.1",
   "description": "CLI wizard to automate spinning up new Hermes agent profiles and registering them in Paperclip",
   "main": "index.js",
   "scripts": {
