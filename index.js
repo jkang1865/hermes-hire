@@ -283,7 +283,8 @@ function updateTerminalCwd(profileName, companyPrefix, role) {
   } else {
     // Use absolute home path — "~" resolves to nested profile workspace
     // in multi-profile environments, breaking terminal tool access.
-    config.terminal.cwd = os.homedir();
+    // REAL_HOME walks up from $HOME to find the true system home.
+    config.terminal.cwd = REAL_HOME;
   }
 
   fs.writeFileSync(configPath, yaml.dump(config, { lineWidth: -1 }), "utf-8");
