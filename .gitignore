@@ -1,31 +1,7 @@
-# Dependencies
 node_modules/
-
-# Environment files / secrets
 .env
 *.env
-*.env.*
-.env.local
-.env.production
-
-# OS files
+*.secret
+*.key
 .DS_Store
-Thumbs.db
-
-# Logs
-*.log
-logs/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Build artifacts
 dist/
-build/
-
-# Hermes-specific (should never be in this repo)
-config.yaml
-profiles/
