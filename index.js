@@ -17,12 +17,32 @@ const path = require("path");
 const { execSync } = require("child_process");
 const yaml = require("js-yaml");
 
+// ─── Helpers ────────────────────────────────────────────────────────────
+const os = require("os");
+
+function getRealHome() {
+  // Walk up from process.env.HOME until we find a path that does NOT
+  // end with a Hermes-managed directory (.hermes, .hermes/profiles, or
+  // .hermes/profiles/<profile>/home). This handles nested workspace
+  // environments where $HOME resolves somewhere inside .hermes/ instead
+  // of the real system home.
+  let candidate = process.env.HOME || os.homedir();
+  while (
+    candidate.endsWith("/.hermes/profiles/home") ||
+    candidate.match(/\/\.hermes\/profiles\/[^/]+\/home$/) ||
+    candidate.match(/\/\.hermes\/profiles\/[^/]+$/) ||
+    candidate.endsWith("/.hermes/profiles") ||
+    candidate.endsWith("/.hermes")
+  ) {
+    candidate = path.dirname(candidate);
+  }
+  return candidate;
+}
+
+const REAL_HOME = getRealHome();
+
 // ─── Constants ──────────────────────────────────────────────────────────
-const HERMES_PROFILES_DIR = path.join(
-  process.env.HOME || require("os").homedir(),
-  ".hermes",
-  "profiles"
-);
+const HERMES_PROFILES_DIR = path.join(REAL_HOME, ".hermes", "profiles");
 
 const DEFAULT_TOOLSETS = "web,file";
 const DEFAULT_BUDGET = 5;
@@ -243,14 +263,11 @@ function setTerminalCwd(profileName, prefix, role) {
   );
   const config = yaml.load(fs.readFileSync(configPath, "utf8"));
 
-  // For CTO role with matching prefix → ~/shelfscout (or ~/<prefix>)
-  if (role === "cto" && prefix) {
-    config.terminal = config.terminal || {};
-    config.terminal.cwd = `~/${prefix}`;
-  } else {
-    config.terminal = config.terminal || {};
-    config.terminal.cwd = "~";
-  }
+  // Non-CTO roles → real system home; CTO → ~/prefix relative to REAL_HOME
+  config.terminal = config.terminal || {};
+  config.terminal.cwd = role === "cto" && prefix
+    ? path.join(REAL_HOME, prefix)
+    : REAL_HOME;
 
   fs.writeFileSync(configPath, yaml.dump(config, { lineWidth: -1 }));
   console.log(
@@ -282,6 +299,19 @@ function installAndStartGateway(profileName) {
 }
 
 // ─── Step 4: Register in Paperclip ──────────────────────────────────────
+
+async function verifyBotUsername(token) {
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+    const data = await res.json();
+    if (data.ok && data.result && data.result.username) {
+      return data.result.username;
+    }
+  } catch (e) {
+    // ignore — network may not be available
+  }
+  return null;
+}
 
 async function registerPaperclip(agentData) {
   console.log(`\n📋 Registering agent in Paperclip...`);
@@ -348,8 +378,12 @@ function printSummary(data, paperclipResult) {
 
   if (telegramToken) {
     const serviceName = `hermes-gateway-${profileName}`;
+    const realUsername = data._verifiedBotUsername;
+    const displayUsername = realUsername
+      ? `@${realUsername} (verified)`
+      : `@${prefix}_${role}_bot (could not verify — check BotFather)`;
     console.log(`   Gateway:      ${serviceName} (systemd)`);
-    console.log(`   Telegram:     @${prefix}_${role}_bot`);
+    console.log(`   Telegram:     ${displayUsername}`);
   }
 
   console.log(`══════════════════════════════════════════════`);
@@ -437,6 +471,8 @@ async function main() {
 
   if (telegramToken) {
     appendToEnv(profileName, "TELEGRAM_BOT_TOKEN", telegramToken);
+    const realUsername = await verifyBotUsername(telegramToken);
+    data._verifiedBotUsername = realUsername;
   }
 
   // Gateway install + start (only if Telegram configured)
